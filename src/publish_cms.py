@@ -127,11 +127,22 @@ def _select_current_label(select_root) -> str:
     return ""
 
 
-def _click_option_in_open_dropdown(page: Page, option: str) -> None:
-    """虚拟下拉滚动直到出现选项并点击（不支持输入筛选）。"""
+def _sync_dropdown(page: Page):
     dd = page.locator(".antd-editor-select-dropdown").locator("visible=true").last
     dd.wait_for(state="visible", timeout=10_000)
-    holder = dd.locator(".rc-virtual-list-holder").first
+    return dd, dd.locator(".rc-virtual-list-holder").first
+
+
+def _virtual_list_scroll_top(holder) -> None:
+    if holder.count() > 0:
+        holder.evaluate("el => { el.scrollTop = 0; }")
+
+
+def _click_option_in_open_dropdown(page: Page, option: str) -> None:
+    """虚拟下拉滚动直到出现选项并点击（不支持输入筛选）。"""
+    dd, holder = _sync_dropdown(page)
+    _virtual_list_scroll_top(holder)
+    page.wait_for_timeout(150)
     for _ in range(120):
         item = dd.locator(".antd-editor-select-item-option-content").get_by_text(
             option, exact=True
@@ -194,9 +205,10 @@ def _count_sync_selected(row, name: str) -> int:
 
 def _click_unselected_sync_option(page: Page, option: str) -> None:
     """内容同步多选：滚动列表，点击下一个未选中的同名项（如两个「交通银行」）。"""
-    dd = page.locator(".antd-editor-select-dropdown").locator("visible=true").last
-    dd.wait_for(state="visible", timeout=10_000)
-    holder = dd.locator(".rc-virtual-list-holder").first
+    dd, holder = _sync_dropdown(page)
+    # 多选后列表常停在底部；不回到顶部会漏选「杭州银行」等靠前项
+    _virtual_list_scroll_top(holder)
+    page.wait_for_timeout(150)
     for _ in range(120):
         options = dd.locator(".antd-editor-select-item-option")
         for i in range(options.count()):
@@ -250,7 +262,8 @@ def _fill_content_sync(page: Page, needed: Counter[str]) -> None:
 
 def _sync_targets(draft: ArticleDraft) -> Counter[str]:
     if draft.keyword == PRECIOUS_METAL:
-        return Counter({"邮储银行": 1, "浙江省联社": 1, "杭州银行": 1})
+        # 按下拉大致顺序先选靠前者，减少虚拟列表来回滚动
+        return Counter({"杭州银行": 1, "浙江省联社": 1, "邮储银行": 1})
     if draft.keyword == FOREX:
         return Counter({"交通银行": 2})
     return Counter()

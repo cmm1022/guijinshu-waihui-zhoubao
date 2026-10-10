@@ -460,8 +460,24 @@ def _headless_default() -> bool:
     return os.getenv("CMS_HEADLESS", "1").strip() not in ("0", "false", "no")
 
 
-def _browser_channel() -> str:
-    return os.getenv("CMS_BROWSER_CHANNEL", "msedge").strip() or "msedge"
+def _edge_executable_paths() -> list[Path]:
+    return [
+        Path("/opt/microsoft/msedge/msedge"),
+        Path("/usr/bin/microsoft-edge"),
+        Path("/usr/bin/microsoft-edge-stable"),
+    ]
+
+
+def _browser_channel() -> str | None:
+    """Playwright channel；无可用系统浏览器时返回 None，使用自带的 Chromium。"""
+    raw = os.getenv("CMS_BROWSER_CHANNEL", "msedge").strip() or "msedge"
+    if raw != "msedge":
+        return raw
+    if os.name == "nt":
+        return raw
+    if any(p.exists() for p in _edge_executable_paths()):
+        return raw
+    return None
 
 
 def _browser_context(p, settings: Settings, *, headless: bool | None = None):
@@ -469,8 +485,10 @@ def _browser_context(p, settings: Settings, *, headless: bool | None = None):
         headless = _headless_default()
     launch_kwargs: dict = {
         "headless": headless,
-        "channel": _browser_channel(),
     }
+    channel = _browser_channel()
+    if channel:
+        launch_kwargs["channel"] = channel
     args: list[str] = []
     if headless:
         args.append("--disable-blink-features=AutomationControlled")

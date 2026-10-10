@@ -2,6 +2,8 @@
 
 与 [热点板块定时任务](https://github.com/cmm1022/hot-sector-analysis) 相同：**Automation 绑定 GitHub 仓库**，Secrets 在 Cursor Cloud 配置，代码 push 到 GitHub。
 
+**状态（2026-10-10）**：本地试跑通过；Cloud 环境 `guijinshu-waihui-zhoubao` 已同步 Secrets。保存 Automation 后 **每周一 9:00（北京时间）** 正式执行。
+
 ## 1. 仓库
 
 | 项 | 值 |
@@ -37,6 +39,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\copy_secrets_for_automation.p
 | 用户消息 | [prompts/automation-user-message.md](../prompts/automation-user-message.md) |
 
 云端建议环境变量：`CMS_HEADLESS=1`，`CMS_BROWSER_CHANNEL=chromium`（云环境优先 chromium）。
+
+**内容同步**：贵金属 = 邮储银行、浙江省联社、杭州银行各 1 项；外汇 = 下拉中 **两个「交通银行」均勾选**（脚本会跳过已选、逐一点未选同名项，并在发布前校验数量）。
 
 ## 4. 本地试跑
 

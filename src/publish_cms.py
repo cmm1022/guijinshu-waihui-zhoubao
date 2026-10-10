@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -182,33 +183,77 @@ def _fill_basic_fields(page: Page, draft: ArticleDraft) -> None:
         _fill_content_sync(page, sync_opts)
 
 
-def _click_sync_option_in_list(page: Page, option: str) -> None:
-    """内容同步多选：滚动勾选。"""
-    _click_option_in_open_dropdown(page, option)
+def _count_sync_selected(row, name: str) -> int:
+    items = row.locator(".antd-editor-select-selection-item")
+    n = 0
+    for i in range(items.count()):
+        if (items.nth(i).inner_text() or "").strip() == name:
+            n += 1
+    return n
 
 
-def _fill_content_sync(page: Page, options: list[str]) -> None:
+def _click_unselected_sync_option(page: Page, option: str) -> None:
+    """内容同步多选：滚动列表，点击下一个未选中的同名项（如两个「交通银行」）。"""
+    dd = page.locator(".antd-editor-select-dropdown").locator("visible=true").last
+    dd.wait_for(state="visible", timeout=10_000)
+    holder = dd.locator(".rc-virtual-list-holder").first
+    for _ in range(120):
+        options = dd.locator(".antd-editor-select-item-option")
+        for i in range(options.count()):
+            opt_el = options.nth(i)
+            label = opt_el.locator(".antd-editor-select-item-option-content")
+            if label.count() == 0:
+                continue
+            if (label.first.inner_text() or "").strip() != option:
+                continue
+            cls = opt_el.get_attribute("class") or ""
+            if "item-option-selected" in cls:
+                continue
+            opt_el.click(timeout=5_000)
+            return
+        if holder.count() > 0:
+            holder.evaluate("el => { el.scrollTop += 120; }")
+        else:
+            dd.evaluate(
+                """() => {
+                    const root = document.querySelector(
+                      '.antd-editor-select-dropdown:not([style*="display: none"])'
+                    );
+                    const list = root && root.querySelector('.rc-virtual-list-holder');
+                    if (list) list.scrollTop += 120;
+                }"""
+            )
+        page.wait_for_timeout(120)
+    raise RuntimeError(f"内容同步列表中未找到可勾选的: {option}")
+
+
+def _fill_content_sync(page: Page, needed: Counter[str]) -> None:
     """内容同步：form_item_otherTenantIds，多选下拉滚动勾选。"""
     row = _editor_row(page, "内容同步")
     row.scroll_into_view_if_needed()
     trigger = row.locator(".antd-editor-select-selector")
-    for opt in options:
-        if row.locator(".antd-editor-select-selection-item").filter(has_text=opt).count() > 0:
-            continue
-        trigger.click()
-        page.wait_for_timeout(500)
-        _click_sync_option_in_list(page, opt)
-        page.wait_for_timeout(400)
-        page.keyboard.press("Escape")
-        page.wait_for_timeout(200)
+    for name, count in needed.items():
+        while _count_sync_selected(row, name) < count:
+            trigger.click()
+            page.wait_for_timeout(500)
+            _click_unselected_sync_option(page, name)
+            page.wait_for_timeout(400)
+            page.keyboard.press("Escape")
+            page.wait_for_timeout(200)
+    for name, count in needed.items():
+        got = _count_sync_selected(row, name)
+        if got < count:
+            raise RuntimeError(
+                f"内容同步未完成: {name} 需 {count} 项，当前已选 {got} 项"
+            )
 
 
-def _sync_targets(draft: ArticleDraft) -> list[str]:
+def _sync_targets(draft: ArticleDraft) -> Counter[str]:
     if draft.keyword == PRECIOUS_METAL:
-        return ["邮储银行", "浙江省联社", "杭州银行"]
+        return Counter({"邮储银行": 1, "浙江省联社": 1, "杭州银行": 1})
     if draft.keyword == FOREX:
-        return ["交通银行"]
-    return []
+        return Counter({"交通银行": 2})
+    return Counter()
 
 
 def _focus_body_editor(page: Page):

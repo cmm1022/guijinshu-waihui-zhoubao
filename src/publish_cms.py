@@ -135,9 +135,35 @@ def _select_current_label(select_root) -> str:
     return ""
 
 
+def _sync_dropdown_open(page: Page) -> bool:
+    return (
+        page.locator("#form_item_otherTenantIds").get_attribute("aria-expanded")
+        == "true"
+    )
+
+
+def _open_sync_dropdown(page: Page) -> None:
+    trigger = _sync_trigger(page)
+    for _ in range(5):
+        if _sync_dropdown_open(page):
+            return
+        trigger.scroll_into_view_if_needed()
+        trigger.click(timeout=10_000)
+        page.wait_for_timeout(700)
+    raise RuntimeError("内容同步下拉未能打开")
+
+
 def _sync_dropdown(page: Page):
-    dd = page.locator(".antd-editor-select-dropdown").locator("visible=true").last
-    dd.wait_for(state="visible", timeout=10_000)
+    _open_sync_dropdown(page)
+    dd = (
+        page.locator(".antd-editor-select-dropdown")
+        .locator("visible=true")
+        .filter(has=page.locator('[id^="form_item_otherTenantIds_list"]'))
+        .last
+    )
+    if dd.count() == 0:
+        dd = page.locator(".antd-editor-select-dropdown").locator("visible=true").last
+    dd.wait_for(state="visible", timeout=20_000)
     return dd, dd.locator(".rc-virtual-list-holder").first
 
 
@@ -148,7 +174,9 @@ def _virtual_list_scroll_top(holder) -> None:
 
 def _click_option_in_open_dropdown(page: Page, option: str) -> None:
     """虚拟下拉滚动直到出现选项并点击（不支持输入筛选）。"""
-    dd, holder = _sync_dropdown(page)
+    dd = page.locator(".antd-editor-select-dropdown").locator("visible=true").last
+    dd.wait_for(state="visible", timeout=20_000)
+    holder = dd.locator(".rc-virtual-list-holder").first
     _virtual_list_scroll_top(holder)
     page.wait_for_timeout(150)
     for _ in range(120):
@@ -226,8 +254,10 @@ def _close_dropdown_focus_basic(page: Page) -> None:
 
 def _click_unselected_sync_option(page: Page, option: str) -> None:
     """在 #form_item_otherTenantIds 对应下拉里滚动并点击未选中项。"""
+    row = _sync_select_root(page)
+    already = _count_sync_selected(row, option)
     ok = page.evaluate(
-        """(label) => {
+        """({ label, skipMatches }) => {
           const listRoot = document.getElementById('form_item_otherTenantIds_list')
             || document.querySelector('[id^="form_item_otherTenantIds_list"]');
           const scope = listRoot
@@ -242,11 +272,15 @@ def _click_unselected_sync_option(page: Page, option: str) -> None:
           const norm = (s) => (s || '').replace(/\\s+/g, '').trim();
           const want = norm(label);
           for (let round = 0; round < 180; round++) {
+            let skip = skipMatches;
             for (const opt of dd.querySelectorAll('.antd-editor-select-item-option')) {
-              if ((opt.className || '').includes('option-selected')) continue;
               const t = opt.querySelector('.antd-editor-select-item-option-content');
               const text = t ? t.innerText.trim() : (opt.innerText || '').trim();
               if (norm(text) !== want) continue;
+              if (skip > 0) {
+                skip -= 1;
+                continue;
+              }
               (t || opt).dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
               (t || opt).click();
               return true;
@@ -255,12 +289,13 @@ def _click_unselected_sync_option(page: Page, option: str) -> None:
           }
           return false;
         }""",
-        option,
+        {"label": option, "skipMatches": already},
     )
     if not ok:
         dd, holder = _sync_dropdown(page)
         _virtual_list_scroll_top(holder)
         page.wait_for_timeout(150)
+        skip = already
         for _ in range(120):
             options = dd.locator(".antd-editor-select-item-option")
             for i in range(options.count()):
@@ -273,8 +308,8 @@ def _click_unselected_sync_option(page: Page, option: str) -> None:
                 ).strip()
                 if text.replace(" ", "") != option.replace(" ", ""):
                     continue
-                cls = opt_el.get_attribute("class") or ""
-                if "item-option-selected" in cls:
+                if skip > 0:
+                    skip -= 1
                     continue
                 opt_el.click(timeout=5_000)
                 page.wait_for_timeout(500)
@@ -310,8 +345,7 @@ def _fill_content_sync(page: Page, needed: Counter[str]) -> None:
     names = list(needed.keys())
     for name, count in needed.items():
         while _count_sync_selected(row, name) < count:
-            trigger.click(timeout=10_000)
-            page.wait_for_timeout(500)
+            _open_sync_dropdown(page)
             _click_unselected_sync_option(page, name)
             page.wait_for_timeout(400)
             if name != names[-1]:

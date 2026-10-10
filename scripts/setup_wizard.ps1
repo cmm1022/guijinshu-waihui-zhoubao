@@ -15,8 +15,11 @@ Write-Host "      -> Log in, create repo name: guijinshu-waihui-zhoubao"
 Write-Host "      -> Copy HTTPS clone URL (https://origin.cursor.com/...)"
 Write-Host ""
 
-$url = Read-Host "[2/4] Paste clone URL here and press Enter"
-$url = $url.Trim().Trim('"')
+$defaultUrl = "https://origin.cursor.com/guijinshu-waihui-zhoubao/guijinshu-waihui-zhoubao.git"
+Write-Host "Default: $defaultUrl"
+$url = Read-Host "[2/4] Paste clone URL (Enter = use default)"
+$url = ($url.Trim().Trim('"'))
+if ($url -eq "") { $url = $defaultUrl }
 if ($url -notmatch '^https?://') {
     Write-Error "Invalid URL. Paste the full HTTPS clone link."
 }

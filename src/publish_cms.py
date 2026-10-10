@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -303,17 +304,25 @@ def _headless_default() -> bool:
     return os.getenv("CMS_HEADLESS", "1").strip() not in ("0", "false", "no")
 
 
-def _browser_channel() -> str:
-    return os.getenv("CMS_BROWSER_CHANNEL", "msedge").strip() or "msedge"
+def _browser_channel(*, headless: bool) -> str | None:
+    """Playwright channel：本地 Windows 常用 msedge；Linux 无头云端仅安装 bundled chromium。"""
+    raw = os.getenv("CMS_BROWSER_CHANNEL", "").strip()
+    if not raw:
+        raw = "msedge" if not headless else "chromium"
+    if raw.lower() in ("chromium", "bundled", "playwright"):
+        return None
+    if headless and sys.platform.startswith("linux"):
+        return None
+    return raw
 
 
 def _browser_context(p, settings: Settings, *, headless: bool | None = None):
     if headless is None:
         headless = _headless_default()
-    launch_kwargs: dict = {
-        "headless": headless,
-        "channel": _browser_channel(),
-    }
+    launch_kwargs: dict = {"headless": headless}
+    channel = _browser_channel(headless=headless)
+    if channel:
+        launch_kwargs["channel"] = channel
     args: list[str] = []
     if headless:
         args.append("--disable-blink-features=AutomationControlled")

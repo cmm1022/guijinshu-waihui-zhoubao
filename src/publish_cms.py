@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 from collections import Counter
@@ -16,6 +17,13 @@ DEFAULT_EDITOR_PATH = "/editor/publish-home?pulishType=ARTICLE&back=contentList"
 
 PRECIOUS_METAL = "贵金属周报"
 FOREX = "外汇周报"
+
+# CMS 发布接口 otherTenantIds（与下拉展示名不同，见 probe_full_publish_posts 抓包）
+_PUBLISH_TENANT_IDS: dict[str, list[str]] = {
+    PRECIOUS_METAL: ["zrcub", "psbc", "hzbank"],  # 浙江省联社、邮储银行、杭州银行
+    FOREX: ["bocom", "bocom"],  # 两个「交通银行」租户
+}
+_PUBLISH_API_SUFFIX = "/hcc/manager/v1/content/publish"
 
 
 @dataclass
@@ -191,8 +199,14 @@ def _fill_basic_fields(page: Page, draft: ArticleDraft) -> None:
         page.get_by_placeholder("请输入简介").fill(draft.summary)
 
 
-def _sync_row(page: Page):
-    return _editor_row(page, "内容同步")
+def _sync_select_root(page: Page):
+    return _select_root(page, "form_item_otherTenantIds")
+
+
+def _sync_trigger(page: Page):
+    return page.locator("#form_item_otherTenantIds").locator(
+        'xpath=ancestor::div[contains(@class,"antd-editor-select-selector")][1]'
+    )
 
 
 def _count_sync_selected(row, name: str) -> int:
@@ -204,8 +218,9 @@ def _count_sync_selected(row, name: str) -> int:
     return n
 
 
-def _close_dropdown_focus_title(page: Page) -> None:
-    page.get_by_placeholder(re.compile(r"请在这里输入标题")).first.click(timeout=5_000)
+def _close_dropdown_focus_basic(page: Page) -> None:
+    """收起下拉；勿点标题（会滚到页顶，易导致基本信息区状态异常）。"""
+    page.get_by_placeholder("请输入内容来源").click(timeout=5_000)
     page.wait_for_timeout(350)
 
 
@@ -289,19 +304,19 @@ def _assert_sync_selected(row, needed: Counter[str]) -> None:
 
 def _fill_content_sync(page: Page, needed: Counter[str]) -> None:
     """内容同步：form_item_otherTenantIds，多选下拉滚动勾选。"""
-    row = _sync_row(page)
+    row = _sync_select_root(page)
     row.scroll_into_view_if_needed()
-    trigger = row.locator(".antd-editor-select-selector")
+    trigger = _sync_trigger(page)
     names = list(needed.keys())
     for name, count in needed.items():
         while _count_sync_selected(row, name) < count:
-            trigger.click()
+            trigger.click(timeout=10_000)
             page.wait_for_timeout(500)
             _click_unselected_sync_option(page, name)
             page.wait_for_timeout(400)
             if name != names[-1]:
-                _close_dropdown_focus_title(page)
-    _close_dropdown_focus_title(page)
+                _close_dropdown_focus_basic(page)
+    _close_dropdown_focus_basic(page)
     _assert_sync_selected(row, needed)
 
 
@@ -311,7 +326,7 @@ def _apply_content_sync_before_publish(page: Page, draft: ArticleDraft) -> None:
     if not needed:
         return
     _scroll_to_basic_info(page)
-    row = _sync_row(page)
+    row = _sync_select_root(page)
     row.scroll_into_view_if_needed()
     for attempt in range(3):
         _fill_content_sync(page, needed)
@@ -327,6 +342,32 @@ def _apply_content_sync_before_publish(page: Page, draft: ArticleDraft) -> None:
                 remove_btns.first.click()
                 page.wait_for_timeout(150)
             page.wait_for_timeout(300)
+
+
+def _publish_tenant_ids(draft: ArticleDraft) -> list[str]:
+    return list(_PUBLISH_TENANT_IDS.get(draft.keyword, []))
+
+
+def _install_publish_tenant_guard(page: Page, draft: ArticleDraft) -> None:
+    """发布请求兜底：强制写入 otherTenantIds，避免 UI 未绑定导致编辑页为空。"""
+    expected = _publish_tenant_ids(draft)
+    if not expected:
+        return
+
+    def _patch(route) -> None:
+        req = route.request
+        if req.method != "POST" or not req.url.endswith(_PUBLISH_API_SUFFIX):
+            route.continue_()
+            return
+        try:
+            payload = json.loads(req.post_data or "{}")
+        except json.JSONDecodeError:
+            route.continue_()
+            return
+        payload["otherTenantIds"] = expected
+        route.continue_(post_data=json.dumps(payload, ensure_ascii=False))
+
+    page.route(f"**{_PUBLISH_API_SUFFIX}", _patch)
 
 
 def _sync_targets(draft: ArticleDraft) -> Counter[str]:
@@ -397,23 +438,9 @@ def _fill_and_submit(page: Page, draft: ArticleDraft) -> None:
     page.keyboard.press("End")
     page.wait_for_timeout(500)
     _apply_content_sync_before_publish(page, draft)
-
-    publish_pat = re.compile(r"^发\s*布$")
+    _install_publish_tenant_guard(page, draft)
 
     def _click_exact_publish() -> None:
-        primary = page.locator(
-            "button.antd-editor-btn-primary:not(.ant-btn-fixtime)"
-        )
-        if primary.count() > 0:
-            primary.first.scroll_into_view_if_needed()
-            primary.first.click(timeout=15_000)
-            return
-        for sel in ("button.antd-editor-btn-primary", "button.ant-btn-primary"):
-            loc = page.locator(sel).filter(has_text=publish_pat)
-            if loc.count() > 0:
-                loc.first.scroll_into_view_if_needed()
-                loc.first.click(timeout=15_000)
-                return
         page.evaluate(
             """() => {
                 const norm = (s) => (s || '').replace(/\\s+/g, '').trim();
@@ -421,7 +448,6 @@ def _fill_and_submit(page: Page, draft: ArticleDraft) -> None:
                   .find(b => norm(b.innerText) === '发布'
                     && !b.classList.contains('ant-btn-fixtime'));
                 if (!btn) throw new Error('未找到发布按钮');
-                btn.scrollIntoView({block: 'center'});
                 btn.click();
             }"""
         )

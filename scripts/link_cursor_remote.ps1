@@ -1,4 +1,4 @@
-# 关联 Cursor Origin 远程并 push（需先在浏览器创建仓库并复制 HTTPS 地址）
+# 关联 GitHub 远程并 push
 param(
     [Parameter(Mandatory = $true)]
     [string]$RemoteUrl

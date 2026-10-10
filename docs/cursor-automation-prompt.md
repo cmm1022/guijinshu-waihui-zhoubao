@@ -17,7 +17,7 @@
 |----|------|
 | 名称 | 周报邮件抓取并发布 CMS |
 | 触发 | Cron：每周一 **9:00 北京时间**（若界面为 UTC：`0 9 * * 1` 等价为 UTC 周一 1:00 ≈ 北京 9:00，**以界面时区说明为准**） |
-| 仓库 | 本仓库及默认分支 |
+| 仓库 | GitHub `cmm1022/guijinshu-waihui-zhoubao`，分支 `main` |
 | 模型 | 可运行终端 + 浏览器的 Cloud Agent |
 
 ### 密钥（Automation Secrets）

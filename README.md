@@ -52,9 +52,9 @@ python -m src.run_weekly
 
 ## 4. Cursor 定时自动化（每周一 9:00 北京时间）
 
-详细清单与 Agent 指令见 **[docs/cursor-automation-prompt.md](docs/cursor-automation-prompt.md)**。
+与热点板块相同，绑定 **GitHub** 仓库。见 **[docs/cloud-agent-setup.md](docs/cloud-agent-setup.md)**、**[docs/三步完成上线.md](docs/三步完成上线.md)**。
 
-要点：密钥配齐 `EMAIL_*`、`IMAP_*`、`CMS_*`；云端设 `CMS_HEADLESS=1`，安装 Playwright 浏览器后执行 `python -m src.run_weekly`。
+要点：push 到 `cmm1022/guijinshu-waihui-zhoubao`；Secrets 配齐 `EMAIL_*`、`IMAP_*`、`CMS_*`；云端 `CMS_HEADLESS=1` 后执行 `python -m src.run_weekly`。
 
 ## 5. 说明
 

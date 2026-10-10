@@ -189,9 +189,10 @@ def _fill_basic_fields(page: Page, draft: ArticleDraft) -> None:
     page.get_by_text("无图", exact=True).click()
     if draft.keyword == PRECIOUS_METAL and draft.summary:
         page.get_by_placeholder("请输入简介").fill(draft.summary)
-    sync_opts = _sync_targets(draft)
-    if sync_opts:
-        _fill_content_sync(page, sync_opts)
+
+
+def _sync_row(page: Page):
+    return _editor_row(page, "内容同步")
 
 
 def _count_sync_selected(row, name: str) -> int:
@@ -203,67 +204,135 @@ def _count_sync_selected(row, name: str) -> int:
     return n
 
 
+def _close_dropdown_focus_title(page: Page) -> None:
+    page.get_by_placeholder(re.compile(r"请在这里输入标题")).first.click(timeout=5_000)
+    page.wait_for_timeout(350)
+
+
 def _click_unselected_sync_option(page: Page, option: str) -> None:
-    """内容同步多选：滚动列表，点击下一个未选中的同名项（如两个「交通银行」）。"""
-    dd, holder = _sync_dropdown(page)
-    # 多选后列表常停在底部；不回到顶部会漏选「杭州银行」等靠前项
-    _virtual_list_scroll_top(holder)
-    page.wait_for_timeout(150)
-    for _ in range(120):
-        options = dd.locator(".antd-editor-select-item-option")
-        for i in range(options.count()):
-            opt_el = options.nth(i)
-            label = opt_el.locator(".antd-editor-select-item-option-content")
-            if label.count() == 0:
-                continue
-            if (label.first.inner_text() or "").strip() != option:
-                continue
-            cls = opt_el.get_attribute("class") or ""
-            if "item-option-selected" in cls:
-                continue
-            opt_el.click(timeout=5_000)
-            return
-        if holder.count() > 0:
-            holder.evaluate("el => { el.scrollTop += 120; }")
-        else:
-            dd.evaluate(
-                """() => {
-                    const root = document.querySelector(
-                      '.antd-editor-select-dropdown:not([style*="display: none"])'
-                    );
-                    const list = root && root.querySelector('.rc-virtual-list-holder');
-                    if (list) list.scrollTop += 120;
-                }"""
-            )
-        page.wait_for_timeout(120)
-    raise RuntimeError(f"内容同步列表中未找到可勾选的: {option}")
+    """在 #form_item_otherTenantIds 对应下拉里滚动并点击未选中项。"""
+    ok = page.evaluate(
+        """(label) => {
+          const listRoot = document.getElementById('form_item_otherTenantIds_list')
+            || document.querySelector('[id^="form_item_otherTenantIds_list"]');
+          const scope = listRoot
+            ? (listRoot.closest('.antd-editor-select-dropdown') || listRoot.parentElement)
+            : null;
+          const dd = scope || document.querySelector(
+            '.antd-editor-select-dropdown:not([style*="display: none"])'
+          );
+          if (!dd) return false;
+          const holder = dd.querySelector('.rc-virtual-list-holder');
+          if (holder) holder.scrollTop = 0;
+          const norm = (s) => (s || '').replace(/\\s+/g, '').trim();
+          const want = norm(label);
+          for (let round = 0; round < 180; round++) {
+            for (const opt of dd.querySelectorAll('.antd-editor-select-item-option')) {
+              if ((opt.className || '').includes('option-selected')) continue;
+              const t = opt.querySelector('.antd-editor-select-item-option-content');
+              const text = t ? t.innerText.trim() : (opt.innerText || '').trim();
+              if (norm(text) !== want) continue;
+              (t || opt).dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+              (t || opt).click();
+              return true;
+            }
+            if (holder) holder.scrollTop += 120;
+          }
+          return false;
+        }""",
+        option,
+    )
+    if not ok:
+        dd, holder = _sync_dropdown(page)
+        _virtual_list_scroll_top(holder)
+        page.wait_for_timeout(150)
+        for _ in range(120):
+            options = dd.locator(".antd-editor-select-item-option")
+            for i in range(options.count()):
+                opt_el = options.nth(i)
+                label_el = opt_el.locator(".antd-editor-select-item-option-content")
+                text = (
+                    label_el.first.inner_text()
+                    if label_el.count()
+                    else opt_el.inner_text()
+                ).strip()
+                if text.replace(" ", "") != option.replace(" ", ""):
+                    continue
+                cls = opt_el.get_attribute("class") or ""
+                if "item-option-selected" in cls:
+                    continue
+                opt_el.click(timeout=5_000)
+                page.wait_for_timeout(500)
+                return
+            if holder.count() > 0:
+                holder.evaluate("el => { el.scrollTop += 120; }")
+            page.wait_for_timeout(120)
+        raise RuntimeError(f"内容同步列表中未找到可勾选的: {option}")
+    page.wait_for_timeout(500)
+
+
+def _list_sync_tags(row) -> list[str]:
+    items = row.locator(".antd-editor-select-selection-item")
+    return [(items.nth(i).inner_text() or "").strip() for i in range(items.count())]
+
+
+def _assert_sync_selected(row, needed: Counter[str]) -> None:
+    tags = _list_sync_tags(row)
+    tag_counter = Counter(tags)
+    missing = []
+    for name, count in needed.items():
+        if tag_counter[name] < count:
+            missing.append(f"{name}(需{count}有{tag_counter[name]})")
+    if missing:
+        raise RuntimeError(f"内容同步未完成: {', '.join(missing)}；当前标签={tags}")
 
 
 def _fill_content_sync(page: Page, needed: Counter[str]) -> None:
     """内容同步：form_item_otherTenantIds，多选下拉滚动勾选。"""
-    row = _editor_row(page, "内容同步")
+    row = _sync_row(page)
     row.scroll_into_view_if_needed()
     trigger = row.locator(".antd-editor-select-selector")
+    names = list(needed.keys())
     for name, count in needed.items():
         while _count_sync_selected(row, name) < count:
             trigger.click()
             page.wait_for_timeout(500)
             _click_unselected_sync_option(page, name)
             page.wait_for_timeout(400)
-            page.keyboard.press("Escape")
-            page.wait_for_timeout(200)
-    for name, count in needed.items():
-        got = _count_sync_selected(row, name)
-        if got < count:
-            raise RuntimeError(
-                f"内容同步未完成: {name} 需 {count} 项，当前已选 {got} 项"
-            )
+            if name != names[-1]:
+                _close_dropdown_focus_title(page)
+    _close_dropdown_focus_title(page)
+    _assert_sync_selected(row, needed)
+
+
+def _apply_content_sync_before_publish(page: Page, draft: ArticleDraft) -> None:
+    """发布前最后勾选内容同步，避免填表/滚动冲掉已选项。"""
+    needed = _sync_targets(draft)
+    if not needed:
+        return
+    _scroll_to_basic_info(page)
+    row = _sync_row(page)
+    row.scroll_into_view_if_needed()
+    for attempt in range(3):
+        _fill_content_sync(page, needed)
+        try:
+            _assert_sync_selected(row, needed)
+            return
+        except RuntimeError:
+            if attempt == 2:
+                raise
+            # 清空已选后重试（杭州银行偶发未写入表单）
+            remove_btns = row.locator(".antd-editor-select-selection-item-remove")
+            while remove_btns.count() > 0:
+                remove_btns.first.click()
+                page.wait_for_timeout(150)
+            page.wait_for_timeout(300)
 
 
 def _sync_targets(draft: ArticleDraft) -> Counter[str]:
     if draft.keyword == PRECIOUS_METAL:
-        # 按下拉大致顺序先选靠前者，减少虚拟列表来回滚动
-        return Counter({"杭州银行": 1, "浙江省联社": 1, "邮储银行": 1})
+        # 杭州银行放在最后勾选，减少后续操作覆盖首项的情况
+        return Counter({"浙江省联社": 1, "邮储银行": 1, "杭州银行": 1})
     if draft.keyword == FOREX:
         return Counter({"交通银行": 2})
     return Counter()
@@ -324,6 +393,10 @@ def _fill_and_submit(page: Page, draft: ArticleDraft) -> None:
     _fill_body(page, draft.body, draft.body_html)
 
     _fill_basic_fields(page, draft)
+
+    page.keyboard.press("End")
+    page.wait_for_timeout(500)
+    _apply_content_sync_before_publish(page, draft)
 
     publish_pat = re.compile(r"^发\s*布$")
 

@@ -16,4 +16,4 @@
 | `CMS_BROWSER_CHANNEL` | `msedge` 或云端 `chromium` |
 | `CMS_HEADLESS` | `1` |
 
-保存 Automation 前：cron 设为 **每周一 9:00（北京时间）**，仓库选本项目，Cloud Agent 已启用。
+保存 Automation 前：仓库选 **GitHub `cmm1022/guijinshu-waihui-zhoubao` / 分支 `main`**，cron **每周一 9:00（北京时间）**，用户消息见 `prompts/automation-user-message.md`。

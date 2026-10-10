@@ -1,4 +1,4 @@
 {
-  "install": "python -m pip install -r requirements.txt && python -m playwright install chromium",
+  "install": "ln -sf /usr/bin/python3 /usr/local/bin/python 2>/dev/null || true && python -m pip install -r requirements.txt && python -m playwright install chromium",
   "start": "echo weekly-report env ready"
 }

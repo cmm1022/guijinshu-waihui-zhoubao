@@ -349,16 +349,15 @@ def _headless_default() -> bool:
 
 
 def _browser_channel() -> str:
-    return os.getenv("CMS_BROWSER_CHANNEL", "msedge").strip() or "msedge"
+    """Playwright 启动 channel；云端 headless 默认 chromium（与 environment.json install 一致）。"""
+    raw = os.getenv("CMS_BROWSER_CHANNEL", "").strip()
+    if raw:
+        return raw
+    return "chromium" if _headless_default() else "msedge"
 
 
-def _browser_context(p, settings: Settings, *, headless: bool | None = None):
-    if headless is None:
-        headless = _headless_default()
-    launch_kwargs: dict = {
-        "headless": headless,
-        "channel": _browser_channel(),
-    }
+def _launch_chromium(p, *, headless: bool, channel: str):
+    launch_kwargs: dict = {"headless": headless, "channel": channel}
     args: list[str] = []
     if headless:
         args.append("--disable-blink-features=AutomationControlled")
@@ -366,7 +365,26 @@ def _browser_context(p, settings: Settings, *, headless: bool | None = None):
         args.extend(["--start-maximized", "--disable-blink-features=AutomationControlled"])
     if args:
         launch_kwargs["args"] = args
-    browser = p.chromium.launch(**launch_kwargs)
+    try:
+        return p.chromium.launch(**launch_kwargs)
+    except Exception as exc:
+        msg = str(exc)
+        if channel != "chromium" and (
+            "is not found" in msg or "Executable doesn't exist" in msg
+        ):
+            print(
+                f"警告: Playwright 无法启动 channel={channel!r}，改用 chromium。",
+                flush=True,
+            )
+            launch_kwargs["channel"] = "chromium"
+            return p.chromium.launch(**launch_kwargs)
+        raise
+
+
+def _browser_context(p, settings: Settings, *, headless: bool | None = None):
+    if headless is None:
+        headless = _headless_default()
+    browser = _launch_chromium(p, headless=headless, channel=_browser_channel())
     if headless:
         context = browser.new_context(
             ignore_https_errors=True,

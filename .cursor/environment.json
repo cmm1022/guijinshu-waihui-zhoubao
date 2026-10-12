@@ -1,4 +1,4 @@
 {
-  "install": "python -m pip install -r requirements.txt && python -m playwright install chromium",
-  "start": "echo weekly-report env ready"
+  "install": "sudo apt-get update -qq && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq python-is-python3 && python3 -m pip install --user -r requirements.txt && export PATH=\"$HOME/.local/bin:$PATH\" && python3 -m playwright install",
+  "start": "export PATH=\"$HOME/.local/bin:$PATH\" && echo weekly-report env ready"
 }

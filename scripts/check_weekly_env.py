@@ -1,7 +1,8 @@
-"""检查 .env 是否满足每周任务（不打印密码）。"""
+"""检查每周任务所需配置（不打印密码）。支持本地 .env 或 Cloud Secrets 环境变量。"""
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -11,7 +12,7 @@ sys.path.insert(0, str(ROOT / "src"))
 ENV_FILE = ROOT / ".env"
 
 
-def _keys_in_env() -> set[str]:
+def _keys_from_dotenv_file() -> set[str]:
     keys: set[str] = set()
     if not ENV_FILE.is_file():
         return keys
@@ -23,12 +24,26 @@ def _keys_in_env() -> set[str]:
     return keys
 
 
+def _configured_keys() -> set[str]:
+    keys = _keys_from_dotenv_file()
+    for name, value in os.environ.items():
+        if value.strip():
+            keys.add(name)
+    return keys
+
+
 def main() -> int:
-    if not ENV_FILE.is_file():
-        print("错误: 未找到 .env，请从 .env.example 复制并填写。", file=sys.stderr)
+    keys = _configured_keys()
+    if not keys:
+        print(
+            "错误: 未找到 .env，且当前进程环境变量也为空。"
+            "本地请从 .env.example 复制；云端请在 Cloud Agents → Secrets 配置。",
+            file=sys.stderr,
+        )
         return 1
 
-    keys = _keys_in_env()
+    if not ENV_FILE.is_file():
+        print("（无 .env 文件，仅根据已设置的环境变量检查）")
     email_keys = [
         "EMAIL_USER",
         "EMAIL_PASSWORD",
@@ -87,7 +102,7 @@ def main() -> int:
             return 1
         print("运营账号模式: 需 CMS_EMAIL + 内容同步")
 
-    print("OK: 本地 .env 结构检查通过。")
+    print("OK: 配置检查通过。")
     print(
         "云端: 请在 Cloud Agents 环境 Secrets 中配置与 .env 同名的变量；"
         "或运行 setup_cloud_complete.ps1 / sync_cursor_cloud_secrets.py（需 CURSOR_API_KEY）。"

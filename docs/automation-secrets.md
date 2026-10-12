@@ -18,6 +18,8 @@
 
 ## 变量清单
 
+### 收信与 CMS 基础（必填）
+
 | 密钥名 | 说明 |
 |--------|------|
 | `EMAIL_USER` | 收信企业邮箱 |
@@ -26,11 +28,36 @@
 | `IMAP_PORT` | `993` |
 | `MAIL_SENDER` | `webdetect@myhexin.com`（可选，代码有默认） |
 | `CMS_BASE_URL` | `https://prenewcms.wewecall.com:5443` |
-| `CMS_EMAIL` | CMS 登录邮箱 |
-| `CMS_PASSWORD` | CMS 登录密码 |
 | `CMS_EDITOR_URL` | 编辑页 URL（见 `.env.example`） |
 | `CMS_BROWSER_CHANNEL` | 云端建议 `chromium` |
 | `CMS_HEADLESS` | `1` |
+
+### 分租户发布（当前推荐，`CMS_PUBLISH_MODE=per_tenant`）
+
+| 密钥名 | 说明 |
+|--------|------|
+| `CMS_PUBLISH_MODE` | `per_tenant` |
+| `CMS_TENANT_PUBLISHERS` | 租户 JSON 一行（邮箱 + `password_env`，见 [分租户发布.md](./分租户发布.md)） |
+| `CMS_TENANT_ZRCUB_PASSWORD` | 浙江省联社 CMS 密码 |
+| `CMS_TENANT_PSBC_PASSWORD` | 邮储银行 CMS 密码 |
+| `CMS_TENANT_HZBANK_PASSWORD` | 杭州银行 CMS 密码 |
+| `CMS_TENANT_BCM_PASSWORD` | 交通银行 CMS 密码 |
+
+分租户模式下 **`CMS_EMAIL` / `CMS_PASSWORD` 可不配**（各租户用自己账号登录）。
+
+### 运营账号 + 内容同步（旧方式，可选）
+
+| 密钥名 | 说明 |
+|--------|------|
+| `CMS_EMAIL` | 同花顺运营 CMS 邮箱 |
+| `CMS_PASSWORD` | 运营 CMS 密码 |
+| `CMS_FORCE_OPERATOR_SYNC` | 设为 `1` 时即使配了租户列表也走运营账号同步 |
+
+### 与定时任务无关（仅本地同步脚本用）
+
+| 密钥名 | 说明 |
+|--------|------|
+| `CURSOR_API_KEY` | [Settings → API Keys](https://cursor.com/dashboard?tab=settings) 创建；**仅**用于 `sync_cursor_cloud_secrets.py` 把 `.env` 批量写入 Cloud，**不会**被 `run_weekly` 读取。可只在使用脚本时临时设置，不必长期写在 `.env`。 |
 
 ## 和 Automation 的关系
 
@@ -39,10 +66,12 @@
 3. **Repository**：`cmm1022/guijinshu-waihui-zhoubao`，分支 `main`。  
 4. 若改环境后仍读不到变量：在该 Automation 里 **重新选一次 Environment 并 Save**（避免旧的 Skip install 导致不注入 Secrets）。
 
-本地对照 `.env` 时，可在终端运行（只检查变量名是否齐全，不打印密码）：
+本地对照 `.env` 时，可在终端运行（**不打印密码**，会显示发布模式与租户列表）：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\verify_automation_env.ps1
+# 或
+python scripts/check_weekly_env.py
 ```
 
 粘贴值可用：

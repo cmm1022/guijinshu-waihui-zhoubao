@@ -5,7 +5,10 @@ $envFile = Join-Path $root ".env"
 $order = @(
     "EMAIL_USER", "EMAIL_PASSWORD", "IMAP_HOST", "IMAP_PORT", "MAIL_SENDER",
     "CMS_BASE_URL", "CMS_EMAIL", "CMS_PASSWORD",
-    "CMS_EDITOR_URL", "CMS_BROWSER_CHANNEL", "CMS_HEADLESS"
+    "CMS_EDITOR_URL", "CMS_BROWSER_CHANNEL", "CMS_HEADLESS",
+    "CMS_PUBLISH_MODE", "CMS_TENANT_PUBLISHERS",
+    "CMS_TENANT_ZRCUB_PASSWORD", "CMS_TENANT_PSBC_PASSWORD",
+    "CMS_TENANT_HZBANK_PASSWORD", "CMS_TENANT_BCM_PASSWORD"
 )
 if (-not (Test-Path $envFile)) { Write-Error ".env not found" }
 $vals = @{}
@@ -19,7 +22,7 @@ Get-Content $envFile -Encoding UTF8 | ForEach-Object {
         $vals[$k] = $v
     }
 }
-Write-Host "Automations -> Secrets: create each name, paste from clipboard, Save."
+Write-Host "Cloud Agents -> Environment -> Secrets: create each name, paste from clipboard, Save."
 Write-Host "Press Enter to start (Ctrl+C to abort)."
 [void][Console]::ReadLine()
 foreach ($key in $order) {

@@ -530,7 +530,23 @@ def _tenants_for_draft(settings: Settings, draft: ArticleDraft):
     ]
 
 
-def _publish_many_operator_sync(settings: Settings, drafts: list[ArticleDraft]) -> None:
+def _operator_publish_enabled(settings: Settings) -> bool:
+    if os.getenv("CMS_OPERATOR_PUBLISH", "1").strip().lower() in ("0", "false", "no"):
+        return False
+    return bool(settings.cms_email.strip() and settings.cms_password.strip())
+
+
+def _operator_content_sync_enabled() -> bool:
+    return os.getenv("CMS_OPERATOR_CONTENT_SYNC", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+
+
+def _publish_many_operator(
+    settings: Settings, drafts: list[ArticleDraft], *, use_content_sync: bool
+) -> None:
     with sync_playwright() as p:
         browser, context = _browser_context(p, settings)
         list_page = context.new_page()
@@ -538,8 +554,9 @@ def _publish_many_operator_sync(settings: Settings, drafts: list[ArticleDraft]) 
             _login(list_page, settings)
             for draft in drafts:
                 _open_editor_direct(list_page, settings)
-                _fill_and_submit(list_page, draft, use_content_sync=True)
-                print(f"已提交发布（运营账号+内容同步）: {draft.title}")
+                _fill_and_submit(list_page, draft, use_content_sync=use_content_sync)
+                label = "运营账号+内容同步" if use_content_sync else "运营账号"
+                print(f"已提交发布（{label}）: {draft.title}")
         finally:
             browser.close()
 
@@ -578,14 +595,26 @@ def publish_many(settings: Settings, drafts: list[ArticleDraft]) -> None:
     if settings.cms_dry_run:
         for d in drafts:
             if settings.publish_mode == "per_tenant":
+                if _operator_publish_enabled(settings):
+                    sync = _operator_content_sync_enabled()
+                    print(
+                        f"[DRY RUN] 运营({settings.cms_email}) "
+                        f"sync={sync}: {d.title!r}"
+                    )
                 names = [t.name for t in _tenants_for_draft(settings, d)]
-                print(f"[DRY RUN] {d.title!r} 租户={names}")
+                print(f"[DRY RUN] 租户={names}: {d.title!r}")
             else:
                 print(f"[DRY RUN] {d.title!r} sync={_sync_targets(d)}")
         return
 
     if settings.publish_mode == "per_tenant":
+        if _operator_publish_enabled(settings):
+            _publish_many_operator(
+                settings,
+                drafts,
+                use_content_sync=_operator_content_sync_enabled(),
+            )
         _publish_many_per_tenant(settings, drafts)
         return
 
-    _publish_many_operator_sync(settings, drafts)
+    _publish_many_operator(settings, drafts, use_content_sync=True)

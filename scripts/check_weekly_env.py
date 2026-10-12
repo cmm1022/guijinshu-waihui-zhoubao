@@ -57,6 +57,16 @@ def main() -> int:
         if not settings.tenant_publishers:
             print("错误: per_tenant 但未解析到 CMS_TENANT_PUBLISHERS")
             return 1
+        op_on = __import__("os").getenv("CMS_OPERATOR_PUBLISH", "1").strip().lower() not in (
+            "0",
+            "false",
+            "no",
+        )
+        if op_on:
+            if not settings.cms_email or not settings.cms_password:
+                print("缺少 CMS_EMAIL / CMS_PASSWORD（分租户模式下默认运营账号也会发布）")
+                return 1
+            print(f"运营账号: {settings.cms_email}（随后各租户再各发 1 篇）")
         print(f"租户数量: {len(settings.tenant_publishers)}")
         for t in settings.tenant_publishers:
             print(f"  - {t.name} ({t.email}) -> {', '.join(sorted(t.keywords))}")

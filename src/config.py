@@ -131,6 +131,16 @@ def load_settings(*, require_cms: bool = True) -> Settings:
             raise RuntimeError(
                 "CMS_PUBLISH_MODE=per_tenant 但未配置 CMS_TENANT_PUBLISHERS"
             )
+        op_on = os.getenv("CMS_OPERATOR_PUBLISH", "1").strip().lower() not in (
+            "0",
+            "false",
+            "no",
+        )
+        if op_on and (not cms_email or not cms_password):
+            raise RuntimeError(
+                "分租户模式下默认同时用运营账号 ths 发布，请配置 CMS_EMAIL / CMS_PASSWORD；"
+                "若不要运营账号发布，设 CMS_OPERATOR_PUBLISH=0"
+            )
 
     return Settings(
         email_user=email_user,

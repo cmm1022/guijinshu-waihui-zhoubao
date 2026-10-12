@@ -46,12 +46,9 @@
 ```
 在本仓库根目录执行每周周报任务：
 
-1. python -m pip install -r requirements.txt
-2. python -m playwright install msedge
-   （若 msedge 不可用则 playwright install chromium，并设置 CMS_BROWSER_CHANNEL=chromium）
-3. 设置 CMS_HEADLESS=1
-4. 运行：python -m src.run_weekly
-5. 若任一步失败：输出完整 stderr/stdout，以非零退出码结束，不要静默跳过。
+1. bash scripts/run_automation_weekly.sh
+2. 或 python3 -m pip install -r requirements.txt → python3 -m playwright install → CMS_HEADLESS=1 python3 -m src.run_weekly（Linux 勿用 python -m，会 exit 127）
+3. 若任一步失败：输出完整 stderr/stdout，以非零退出码结束，不要静默跳过。
 
 密码与账号仅从 Automation 密钥读取，不要从代码或聊天记录读取。
 ```

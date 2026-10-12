@@ -6,10 +6,9 @@
 
 在本仓库根目录执行每周周报任务：
 
-1. `python -m pip install -r requirements.txt`
-2. `python -m playwright install chromium`（若失败再试 `msedge`；Secrets 中 `CMS_BROWSER_CHANNEL` 与安装一致）
-3. 环境变量 `CMS_HEADLESS=1`
-4. 运行 `python -m src.run_weekly`
-5. 任一步失败：输出完整 stderr/stdout，以非零退出码结束，不要静默跳过。
+1. `bash scripts/run_automation_weekly.sh`（推荐；内部使用 `python3`）
+2. 或手动：`python3 -m pip install -r requirements.txt` → `python3 -m playwright install` → `CMS_HEADLESS=1 python3 -m src.run_weekly`（勿用 `python -m`，Linux 云镜像默认无 `python` 会 exit 127）
+3. `CMS_BROWSER_CHANNEL` 须与 `playwright install` 安装的浏览器一致（见 Secrets）
+4. 任一步失败：输出完整 stderr/stdout，以非零退出码结束，不要静默跳过。
 
 账号密码仅从 Automation Secrets 读取，不要从聊天记录读取。

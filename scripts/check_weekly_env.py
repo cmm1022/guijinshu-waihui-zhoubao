@@ -24,11 +24,16 @@ def _keys_in_env() -> set[str]:
 
 
 def main() -> int:
-    if not ENV_FILE.is_file():
-        print("错误: 未找到 .env，请从 .env.example 复制并填写。", file=sys.stderr)
-        return 1
+    import os
 
     keys = _keys_in_env()
+    if not ENV_FILE.is_file():
+        if os.getenv("EMAIL_USER", "").strip() and os.getenv("EMAIL_PASSWORD", "").strip():
+            print("未找到 .env，使用当前进程环境变量（Cloud Secrets）检查。")
+            keys = set(os.environ)
+        else:
+            print("错误: 未找到 .env，请从 .env.example 复制并填写。", file=sys.stderr)
+            return 1
     email_keys = [
         "EMAIL_USER",
         "EMAIL_PASSWORD",

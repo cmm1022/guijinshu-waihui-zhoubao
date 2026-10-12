@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import sys
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
@@ -314,7 +315,8 @@ def _fill_content_sync(page: Page, needed: Counter[str]) -> None:
             page.wait_for_timeout(500)
             _click_unselected_sync_option(page, name)
             page.wait_for_timeout(400)
-            if name != names[-1]:
+            # 同一租户需勾选多次（如外汇两个「交通银行」）时也必须先收起下拉再重开
+            if _count_sync_selected(row, name) < count or name != names[-1]:
                 _close_dropdown_focus_basic(page)
     _close_dropdown_focus_basic(page)
     _assert_sync_selected(row, needed)
@@ -460,17 +462,21 @@ def _headless_default() -> bool:
     return os.getenv("CMS_HEADLESS", "1").strip() not in ("0", "false", "no")
 
 
-def _browser_channel() -> str:
-    return os.getenv("CMS_BROWSER_CHANNEL", "msedge").strip() or "msedge"
+def _browser_channel() -> str | None:
+    """Playwright 的 channel；None 表示使用 `playwright install` 自带的 Chromium。"""
+    raw = os.getenv("CMS_BROWSER_CHANNEL", "").strip().lower()
+    if raw in ("chromium", "playwright", "bundled"):
+        return "chromium"
+    if raw in ("msedge", "chrome", "chrome-beta", "chrome-dev", "chrome-canary",
+               "msedge-beta", "msedge-dev", "msedge-canary"):
+        return raw
+    if not raw:
+        return "msedge" if sys.platform == "win32" else "chromium"
+    return raw
 
 
-def _browser_context(p, settings: Settings, *, headless: bool | None = None):
-    if headless is None:
-        headless = _headless_default()
-    launch_kwargs: dict = {
-        "headless": headless,
-        "channel": _browser_channel(),
-    }
+def _launch_chromium(p, *, headless: bool, channel: str | None):
+    launch_kwargs: dict = {"headless": headless}
     args: list[str] = []
     if headless:
         args.append("--disable-blink-features=AutomationControlled")
@@ -478,7 +484,28 @@ def _browser_context(p, settings: Settings, *, headless: bool | None = None):
         args.extend(["--start-maximized", "--disable-blink-features=AutomationControlled"])
     if args:
         launch_kwargs["args"] = args
-    browser = p.chromium.launch(**launch_kwargs)
+    if channel:
+        launch_kwargs["channel"] = channel
+    try:
+        return p.chromium.launch(**launch_kwargs)
+    except Exception as exc:
+        msg = str(exc)
+        if channel and channel not in ("chromium",) and (
+            "is not found" in msg or "distribution" in msg.lower()
+        ):
+            print(
+                f"警告: 系统浏览器 channel={channel!r} 不可用，改用 Playwright Chromium。",
+                file=sys.stderr,
+            )
+            launch_kwargs.pop("channel", None)
+            return p.chromium.launch(**launch_kwargs)
+        raise
+
+
+def _browser_context(p, settings: Settings, *, headless: bool | None = None):
+    if headless is None:
+        headless = _headless_default()
+    browser = _launch_chromium(p, headless=headless, channel=_browser_channel())
     if headless:
         context = browser.new_context(
             ignore_https_errors=True,

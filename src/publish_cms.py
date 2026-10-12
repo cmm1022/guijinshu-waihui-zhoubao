@@ -71,6 +71,52 @@ def _login(
     page.wait_for_load_state("networkidle", timeout=120_000)
 
 
+def _skip_duplicate_title_enabled() -> bool:
+    return os.getenv("CMS_SKIP_DUPLICATE_TITLE", "1").strip().lower() not in (
+        "0",
+        "false",
+        "no",
+    )
+
+
+def _content_list_has_title(page: Page, settings: Settings, title: str) -> bool:
+    """当前登录账号的内容列表中是否已有相同标题（用于防止重复触发整链发布）。"""
+    list_url = f"{settings.cms_base_url.rstrip('/')}/base/content-list"
+    page.goto(list_url, wait_until="domcontentloaded", timeout=120_000)
+    page.wait_for_timeout(1500)
+    if "/login" in page.url:
+        return False
+    try:
+        page.wait_for_selector(".ant-table, table, .antd-editor", timeout=45_000)
+    except Exception:
+        pass
+    if page.get_by_text(title, exact=True).count() > 0:
+        return True
+    rows = page.locator("tr").filter(has_text=title)
+    for i in range(min(rows.count(), 30)):
+        if title in (rows.nth(i).inner_text() or ""):
+            return True
+    return False
+
+
+def _publish_draft(
+    page: Page,
+    settings: Settings,
+    draft: ArticleDraft,
+    *,
+    use_content_sync: bool,
+    account_label: str,
+) -> bool:
+    if _skip_duplicate_title_enabled() and _content_list_has_title(
+        page, settings, draft.title
+    ):
+        print(f"跳过（{account_label} 内容列表已有该标题）: {draft.title}")
+        return False
+    _open_editor_direct(page, settings)
+    _fill_and_submit(page, draft, use_content_sync=use_content_sync)
+    return True
+
+
 def _editor_url(settings: Settings) -> str:
     custom = os.getenv("CMS_EDITOR_URL", "").strip()
     if custom:
@@ -552,11 +598,16 @@ def _publish_many_operator(
         list_page = context.new_page()
         try:
             _login(list_page, settings)
+            label = "运营账号+内容同步" if use_content_sync else "运营账号"
             for draft in drafts:
-                _open_editor_direct(list_page, settings)
-                _fill_and_submit(list_page, draft, use_content_sync=use_content_sync)
-                label = "运营账号+内容同步" if use_content_sync else "运营账号"
-                print(f"已提交发布（{label}）: {draft.title}")
+                if _publish_draft(
+                    list_page,
+                    settings,
+                    draft,
+                    use_content_sync=use_content_sync,
+                    account_label=label,
+                ):
+                    print(f"已提交发布（{label}）: {draft.title}")
         finally:
             browser.close()
 
@@ -582,9 +633,14 @@ def _publish_many_per_tenant(settings: Settings, drafts: list[ArticleDraft]) -> 
                             email=tenant.email,
                             password=tenant.password,
                         )
-                        _open_editor_direct(page, settings)
-                        _fill_and_submit(page, draft, use_content_sync=False)
-                        print(f"已发布 [{tenant.name}]: {draft.title}")
+                        if _publish_draft(
+                            page,
+                            settings,
+                            draft,
+                            use_content_sync=False,
+                            account_label=tenant.name,
+                        ):
+                            print(f"已发布 [{tenant.name}]: {draft.title}")
                     finally:
                         context.close()
         finally:

@@ -50,8 +50,9 @@
 2. python -m playwright install msedge
    （若 msedge 不可用则 playwright install chromium，并设置 CMS_BROWSER_CHANNEL=chromium）
 3. 设置 CMS_HEADLESS=1
-4. 运行：python -m src.run_weekly
-5. 若任一步失败：输出完整 stderr/stdout，以非零退出码结束，不要静默跳过。
+4. **仅运行一次** python -m src.run_weekly（不要用浏览器再发 CMS）。
+5. 若输出含「发布流程已执行完成」且退出码 0，立即结束，不要重复第 4 步。
+6. 若任一步失败：输出完整 stderr/stdout，以非零退出码结束，不要静默跳过。
 
 密码与账号仅从 Automation 密钥读取，不要从代码或聊天记录读取。
 ```

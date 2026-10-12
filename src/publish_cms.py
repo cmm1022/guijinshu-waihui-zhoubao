@@ -35,24 +35,37 @@ class ArticleDraft:
     body_html: str | None = None
 
 
-def _login(page: Page, settings: Settings) -> None:
+def _login(
+    page: Page,
+    settings: Settings,
+    *,
+    email: str | None = None,
+    password: str | None = None,
+) -> None:
     login_url = f"{settings.cms_base_url}/login"
     page.goto(login_url, wait_until="domcontentloaded", timeout=120_000)
+    cms_email = (email or settings.cms_email).strip()
+    cms_password = (password or settings.cms_password).strip()
+    if not cms_email or not cms_password:
+        raise RuntimeError("CMS 登录缺少邮箱或密码")
     pwd_tab = page.get_by_role("tab", name="密码登录")
     pwd_tab.wait_for(state="visible", timeout=30_000)
     if pwd_tab.get_attribute("aria-selected") != "true":
         pwd_tab.click(force=True)
     email_box = page.get_by_role("textbox", name="邮箱")
     email_box.first.wait_for(state="visible", timeout=15_000)
-    email_box.first.fill(settings.cms_email)
-    page.get_by_role("textbox", name="密码").fill(settings.cms_password)
+    email_box.first.fill(cms_email)
+    page.get_by_role("textbox", name="密码").fill(cms_password)
     page.get_by_role("button", name="立即登录").click()
     try:
-        page.wait_for_url(re.compile(r"/base/content-list|/base/|/editor/"), timeout=60_000)
+        page.wait_for_url(
+            re.compile(r"/base/content-list|/base/|/editor/|/message"),
+            timeout=60_000,
+        )
     except Exception as exc:
         if "/login" in page.url:
             raise RuntimeError(
-                "CMS 登录失败，仍停留在登录页，请检查 CMS_EMAIL / CMS_PASSWORD"
+                "CMS 登录失败，仍停留在登录页，请检查 CMS 邮箱与密码"
             ) from exc
         raise
     page.wait_for_load_state("networkidle", timeout=120_000)
@@ -424,7 +437,9 @@ def _fill_body(page: Page, text: str, html: str | None = None) -> None:
         page.keyboard.insert_text(text)
 
 
-def _fill_and_submit(page: Page, draft: ArticleDraft) -> None:
+def _fill_and_submit(
+    page: Page, draft: ArticleDraft, *, use_content_sync: bool = True
+) -> None:
     title_loc = page.get_by_placeholder(re.compile(r"请在这里输入标题"))
     if title_loc.count() == 0:
         title_loc = page.locator("textarea").first
@@ -437,8 +452,9 @@ def _fill_and_submit(page: Page, draft: ArticleDraft) -> None:
 
     page.keyboard.press("End")
     page.wait_for_timeout(500)
-    _apply_content_sync_before_publish(page, draft)
-    _install_publish_tenant_guard(page, draft)
+    if use_content_sync:
+        _apply_content_sync_before_publish(page, draft)
+        _install_publish_tenant_guard(page, draft)
 
     def _click_exact_publish() -> None:
         page.evaluate(
@@ -464,7 +480,7 @@ def _browser_channel() -> str:
     return os.getenv("CMS_BROWSER_CHANNEL", "msedge").strip() or "msedge"
 
 
-def _browser_context(p, settings: Settings, *, headless: bool | None = None):
+def _launch_browser(p, settings: Settings, *, headless: bool | None = None):
     if headless is None:
         headless = _headless_default()
     launch_kwargs: dict = {
@@ -478,7 +494,11 @@ def _browser_context(p, settings: Settings, *, headless: bool | None = None):
         args.extend(["--start-maximized", "--disable-blink-features=AutomationControlled"])
     if args:
         launch_kwargs["args"] = args
-    browser = p.chromium.launch(**launch_kwargs)
+    return p.chromium.launch(**launch_kwargs)
+
+
+def _new_browser_context(browser, settings: Settings) -> BrowserContext:
+    headless = _headless_default()
     if headless:
         context = browser.new_context(
             ignore_https_errors=True,
@@ -494,15 +514,23 @@ def _browser_context(p, settings: Settings, *, headless: bool | None = None):
         )
     except Exception:
         pass
-    return browser, context
+    return context
 
 
-def publish_many(settings: Settings, drafts: list[ArticleDraft]) -> None:
-    if settings.cms_dry_run:
-        for d in drafts:
-            print(f"[DRY RUN] {d.title!r} sync={_sync_targets(d)}")
-        return
+def _browser_context(p, settings: Settings, *, headless: bool | None = None):
+    browser = _launch_browser(p, settings, headless=headless)
+    return browser, _new_browser_context(browser, settings)
 
+
+def _tenants_for_draft(settings: Settings, draft: ArticleDraft):
+    return [
+        t
+        for t in settings.tenant_publishers
+        if draft.keyword in t.keywords
+    ]
+
+
+def _publish_many_operator_sync(settings: Settings, drafts: list[ArticleDraft]) -> None:
     with sync_playwright() as p:
         browser, context = _browser_context(p, settings)
         list_page = context.new_page()
@@ -510,7 +538,54 @@ def publish_many(settings: Settings, drafts: list[ArticleDraft]) -> None:
             _login(list_page, settings)
             for draft in drafts:
                 _open_editor_direct(list_page, settings)
-                _fill_and_submit(list_page, draft)
-                print(f"已提交发布: {draft.title}")
+                _fill_and_submit(list_page, draft, use_content_sync=True)
+                print(f"已提交发布（运营账号+内容同步）: {draft.title}")
         finally:
             browser.close()
+
+
+def _publish_many_per_tenant(settings: Settings, drafts: list[ArticleDraft]) -> None:
+    with sync_playwright() as p:
+        browser = _launch_browser(p, settings)
+        try:
+            for draft in drafts:
+                tenants = _tenants_for_draft(settings, draft)
+                if not tenants:
+                    raise RuntimeError(
+                        f"未找到负责「{draft.keyword}」的租户账号，"
+                        "请检查 CMS_TENANT_PUBLISHERS 的 keywords"
+                    )
+                for tenant in tenants:
+                    context = _new_browser_context(browser, settings)
+                    page = context.new_page()
+                    try:
+                        _login(
+                            page,
+                            settings,
+                            email=tenant.email,
+                            password=tenant.password,
+                        )
+                        _open_editor_direct(page, settings)
+                        _fill_and_submit(page, draft, use_content_sync=False)
+                        print(f"已发布 [{tenant.name}]: {draft.title}")
+                    finally:
+                        context.close()
+        finally:
+            browser.close()
+
+
+def publish_many(settings: Settings, drafts: list[ArticleDraft]) -> None:
+    if settings.cms_dry_run:
+        for d in drafts:
+            if settings.publish_mode == "per_tenant":
+                names = [t.name for t in _tenants_for_draft(settings, d)]
+                print(f"[DRY RUN] {d.title!r} 租户={names}")
+            else:
+                print(f"[DRY RUN] {d.title!r} sync={_sync_targets(d)}")
+        return
+
+    if settings.publish_mode == "per_tenant":
+        _publish_many_per_tenant(settings, drafts)
+        return
+
+    _publish_many_operator_sync(settings, drafts)

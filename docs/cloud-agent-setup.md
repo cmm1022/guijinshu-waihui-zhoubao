@@ -40,7 +40,10 @@ powershell -ExecutionPolicy Bypass -File .\scripts\copy_secrets_for_automation.p
 
 云端建议环境变量：`CMS_HEADLESS=1`，`CMS_BROWSER_CHANNEL=chromium`（云环境优先 chromium）。
 
-**内容同步**：贵金属 = 浙江省联社、邮储银行、杭州银行；外汇 = **两个「交通银行」**。脚本会在发布前勾选并校验标签；并在提交 `/hcc/manager/v1/content/publish` 时**强制写入** `otherTenantIds`（贵金属含 `hzbank`），避免编辑页显示「请选择租户」但接口未带上杭州银行。
+**发布方式（二选一）**：
+
+1. **分租户发布（推荐）**：配置 `CMS_TENANT_PUBLISHERS`，各租户账号分别登录发文，不依赖「内容同步」。详见 [分租户发布.md](./分租户发布.md)。  
+2. **运营账号 + 内容同步**：仅 `CMS_EMAIL`；贵金属同步浙江/邮储/杭州，外汇需两个「交通银行」（同账号下拉里常只有一项，易失败）。
 
 ## 4. 本地试跑
 

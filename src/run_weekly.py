@@ -19,6 +19,12 @@ KEYWORDS = (PRECIOUS_METAL, "外汇周报")
 
 def main() -> int:
     settings = load_settings()
+    print(f"CMS 发布模式: {settings.publish_mode}")
+    if settings.publish_mode == "per_tenant":
+        print(
+            "已配置租户: "
+            + ", ".join(t.name for t in settings.tenant_publishers)
+        )
     mails = fetch_latest_by_keywords(settings, KEYWORDS)
     drafts: list[ArticleDraft] = []
     for m in mails:

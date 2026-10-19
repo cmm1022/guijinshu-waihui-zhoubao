@@ -40,6 +40,11 @@ def _task_monday(run: date) -> date:
     return run - timedelta(days=wd)
 
 
+def title_task_date() -> date:
+    """生成标题时采用的「任务日」（默认北京时间当天）。"""
+    return _parse_run_date()
+
+
 def last_monday_friday(run_date: date | None = None) -> tuple[date, date]:
     """任务周一 9:00（北京时间）：标题为「上周一 ~ 上周五」。"""
     run = run_date or _parse_run_date()

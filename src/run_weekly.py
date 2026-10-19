@@ -12,7 +12,12 @@ import os
 from config import load_settings
 from fetch_emails import fetch_latest_by_keywords
 from publish_cms import PRECIOUS_METAL, ArticleDraft, publish_many
-from report_titles import format_report_title, summary_from_market_review
+from report_titles import (
+    format_report_title,
+    last_monday_friday,
+    summary_from_market_review,
+    title_task_date,
+)
 
 KEYWORDS = (PRECIOUS_METAL, "外汇周报")
 
@@ -25,6 +30,9 @@ def main() -> int:
             "已配置租户: "
             + ", ".join(t.name for t in settings.tenant_publishers)
         )
+    task_day = title_task_date()
+    mon, fri = last_monday_friday(task_day)
+    print(f"标题任务日: {task_day}（REPORT_TZ，默认 Asia/Shanghai），区间: {mon} ~ {fri}")
     mails = fetch_latest_by_keywords(settings, KEYWORDS)
     drafts: list[ArticleDraft] = []
     for m in mails:

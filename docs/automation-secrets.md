@@ -31,6 +31,7 @@
 | `CMS_EDITOR_URL` | 编辑页 URL（见 `.env.example`） |
 | `CMS_BROWSER_CHANNEL` | 云端建议 `chromium` |
 | `CMS_HEADLESS` | `1` |
+| `REPORT_TZ` | `Asia/Shanghai`（标题「上周一～五」按北京时间；避免 UTC 周一清晨仍算成周日） |
 
 ### 分租户发布（当前推荐，`CMS_PUBLISH_MODE=per_tenant`）
 

@@ -33,6 +33,7 @@ SECRET_NAMES = [
     "CMS_TENANT_PSBC_PASSWORD",
     "CMS_TENANT_HZBANK_PASSWORD",
     "CMS_TENANT_BCM_PASSWORD",
+    "REPORT_TZ",
 ]
 
 API_BASE = "https://api.cursor.com/v1"
